@@ -21,8 +21,6 @@ object SbtFlaky extends App {
           println(s"${RED}Error Log:$RESET")
           println(logOut.foldMap(s => s + "\n"))
       }
-      println(s"$RED Error Log:$RESET")
-      println(log.foldMap(s => s + "\n"))
     case _ => println("""|sbtflaky <max> <test command>""".stripMargin)
   }
 }
