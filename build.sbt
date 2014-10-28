@@ -1,5 +1,8 @@
 import com.typesafe.sbt.SbtNativePackager._
-import NativePackagerKeys._
+import com.typesafe.sbt.packager.Keys._
+
+
+packageArchetype.java_application
 
 name := "sbtflaky"
 
@@ -11,5 +14,5 @@ libraryDependencies ++= Seq(
 	"org.scalaz" %% "scalaz-core" % "7.1.0",
 	"org.scalaz" %% "scalaz-effect" % "7.1.0"
 	)
-	
-packageArchetype.java_application
+
+
