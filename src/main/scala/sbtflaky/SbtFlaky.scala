@@ -11,6 +11,15 @@ object SbtFlaky extends App {
   val StatsState = IndexedReaderWriterState.rwstMonad[Id, Unit, DList[String], Stats]
   import StatsState._
 
+  println("""!     _     _    __ _       _          
+! ___| |__ | |_ / _| | __ _| | ___   _ 
+!/ __| '_ \| __| |_| |/ _` | |/ / | | |
+!\__ \ |_) | |_|  _| | (_| |   <| |_| |
+!|___/_.__/ \__|_| |_|\__,_|_|\_\\__, |
+!                                |___/ 
+!
+!""".stripMargin('!'))
+
   args match {
     case Array(max, testOnly, test, _*) if (max.parseInt.isSuccess) =>
       val (log, _, _) = whileM_(gets(_.maxRuns >= 0), executeTest(testOnly + " " + test)).run((), Stats(maxRuns = max.toInt))
