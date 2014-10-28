@@ -1,7 +1,7 @@
 import com.typesafe.sbt.SbtNativePackager._
 import NativePackagerKeys._
 
-name := "sbttest"
+name := "sbtflaky"
 
 version := "0.0.1"
 
