@@ -11,13 +11,19 @@ object SbtFlaky extends App {
   val StatsState = IndexedReaderWriterState.rwstMonad[Id, Unit, DList[String], Stats]
   import StatsState._
 
-
   args match {
     case Array(max, testOnly, test, _*) if (max.parseInt.isSuccess) =>
       val (log, _, _) = whileM_(gets(_.maxRuns >= 0), executeTest(testOnly + " " + test)).run((), Stats(maxRuns = max.toInt))
+      log.toList match {
+        case Nil =>
+          println(s"${GREEN}No errors$RESET")
+        case logOut =>
+          println(s"${RED}Error Log:$RESET")
+          println(logOut.foldMap(s => s + "\n"))
+      }
       println(s"$RED Error Log:$RESET")
-      println(log.fold)
-    case _ => println("""|sbttest <max> <test command>""".stripMargin)
+      println(log.foldMap(s => s + "\n"))
+    case _ => println("""|sbtflaky <max> <test command>""".stripMargin)
   }
 }
 
@@ -25,16 +31,21 @@ object Runner {
 
   def executeTest(testCmd: String): ReaderWriterState[Unit, DList[String], Stats, Unit] = ReaderWriterState {
     case (w, stats) =>
+      import stats._
       println(stats.show)
       var output = DList[String]()
-      val processLogger = ProcessLogger(line => output :+ line)
+      val processLogger = ProcessLogger(line => output = output :+ line)
       val exitCode = Process("sbt", List(testCmd)).run(processLogger).exitValue()
       if (exitCode == 0) {
         val (newStats, _) = _maxOk.run(stats)
         (DList[String](), (), newStats)
       } else {
         val (newStats, _) = _maxFailed.run(stats)
-        (output, (), newStats)
+        val header = s"""|$BLUE
+                         |Log for build : $RED${maxRuns - failedRuns - okRuns}
+                         |$RESET
+                       """.stripMargin
+        (header +: output, (), newStats)
       }
   }
 }
