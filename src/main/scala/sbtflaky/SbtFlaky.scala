@@ -2,13 +2,14 @@ package sbtflaky
 
 import scala.sys.process._
 import scalaz._
-import scalaz.IndexedReaderWriterState._
-import scalaz.Id._
-import scalaz.std.vector._
-import scalaz.std.string._
-import scalaz.syntax.std.string._
-import scalaz.syntax.foldable._
-import scalaz.syntax.show._
+//import scalaz.IndexedReaderWriterState._
+//import scalaz.Id._
+//import scalaz.std.vector._
+//import scalaz.std.string._
+//import scalaz.syntax.std.string._
+//import scalaz.syntax.foldable._
+//import scalaz.syntax.show._
+import Scalaz._
 import Console._
 import Runner._
 import Stats._
@@ -17,29 +18,45 @@ object SbtFlaky extends App {
   val StatsState = IndexedReaderWriterState.rwstMonad[Id, Unit, Vector[String], Stats]
   import StatsState._
 
-  println("""!     _     _    __ _       _          
-! ___| |__ | |_ / _| | __ _| | ___   _ 
-!/ __| '_ \| __| |_| |/ _` | |/ / | | |
-!\__ \ |_) | |_|  _| | (_| |   <| |_| |
-!|___/_.__/ \__|_| |_|\__,_|_|\_\\__, |
-!                                |___/ 
-!
-!""".stripMargin('!'))
+  val parser = new scopt.OptionParser[CommandLineConfig]("sbtflaky") {
+    head("sbtflaky", "0.0.1")
+    opt[Int]('n', "numberRuns") required () action { (cNrRuns, c) =>
+      c.copy(nrRuns = cNrRuns)
+    } validate { cNrRuns =>
+      if (cNrRuns > 0) success else failure("numberRuns must be greater zero")
+    } text ("execute the test a specified number of times")
+    arg[String]("<sbt test command>") required () unbounded () action { (cCmd, c) =>
+      c.copy(cmd = c.cmd :+ cCmd)
+    } text ("the sbt command to execute")
+    help("help") text ("prints this usage text")
+    note("""|
+            |Examples:
+            |  sbtflaky -n 10 testOnly MySpec
+            |  sbtflaky -n 3 testOnly *DBSpec
+            | 
+            |The output of all failed command will be piped to stdout.""".stripMargin)
+  }
 
-  args match {
-    case Array(max, testOnly, test, _*) if (max.parseInt.isSuccess) =>
-      val (log, _, _) = whileM_(gets(_.maxRuns >= 0), executeTest(testOnly + " " + test)).run((), Stats(maxRuns = max.toInt))
-      log match {
-        case logOut @ _ +: _ =>
-          println(s"${RED}Error Log:$RESET")
-          println(logOut.foldMap(s => s + "\n"))
-        case _ =>
-          println(s"${GREEN}No errors$RESET")
-      }
-    case _ => println("""|sbtflaky <max> <test command>
-                         |
-                         |e.g. sbtflaky 10 testOnly *MySpec
-                         |""".stripMargin)
+  parser.parse(args, CommandLineConfig()) map { config =>
+    val initialReader = ()
+    val initialState = Stats(maxRuns = config.nrRuns)
+    val (log, _, _) =
+      whileM_(gets(_.maxRuns >= 0), executeTest(config.cmd.mkString(" "))).run(initialReader, initialState)
+    log match {
+      case logOut @ _ +: _ =>
+        println(s"${RED}Error Log:$RESET")
+        println(logOut.foldMap(s => s + "\n"))
+      case _ =>
+        println(s"${GREEN}No errors$RESET")
+    }
+  }
+}
+
+case class CommandLineConfig(nrRuns: Int = 10, cmd: List[String] = Nil)
+
+object CommandLineConfig {
+  implicit def cmdLineConfigShows: Show[CommandLineConfig] = new Show[CommandLineConfig] {
+    override def show(c: CommandLineConfig): Cord = s"(${c.nrRuns}, ${c.cmd.foldLeft("") { case (r, e) => r + " " + e }}"
   }
 }
 
