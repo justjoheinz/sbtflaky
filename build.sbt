@@ -14,7 +14,7 @@ libraryDependencies ++= Seq(
 	"org.scalaz" %% "scalaz-core" % "7.2.0",
 	"org.scalaz" %% "scalaz-effect" % "7.2.0",
 	"com.github.scopt" %% "scopt" % "3.2.0",
-	"org.specs2" %% "specs2-core" % "2.4.15" % "test"
+	"org.specs2" %% "specs2-core" % "3.7" % "test"
 	)
 
 scalacOptions in Test ++= Seq("-Yrangepos")
