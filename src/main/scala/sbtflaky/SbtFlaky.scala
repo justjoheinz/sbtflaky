@@ -1,106 +1,83 @@
 package sbtflaky
 
+import sbtflaky.ColorHelper._
+import sbtflaky.ExitCode._
+import sbtflaky.Stats._
+import sbtflaky.CommandLineParser._
+
+import scala.Console._
 import scala.sys.process._
 import scalaz._
-//import scalaz.IndexedReaderWriterState._
-//import scalaz.Id._
-//import scalaz.std.vector._
-//import scalaz.std.string._
-//import scalaz.syntax.std.string._
-//import scalaz.syntax.foldable._
-//import scalaz.syntax.show._
 import Scalaz._
-import Console._
-import Runner._
-import Stats._
 
-object SbtFlaky extends App {
-  val StatsState = IndexedReaderWriterState.rwstMonad[Id, Unit, Vector[String], Stats]
+
+object SbtFlaky extends App with SbtTestRunner {
+
+  for {
+    config <- parser.parse(args, CommandLineConfig())
+  } yield {
+    config |> (startTestRuns _ andThen (printResult _).tupled)
+  }
+
+}
+
+trait SbtTestRunner {
+
+  val StatsState = ReaderWriterStateT.rwstMonad[Id, String, Log, Stats]
+
   import StatsState._
 
-  val parser = new scopt.OptionParser[CommandLineConfig]("sbtflaky") {
-    head("sbtflaky", "0.0.1")
-    opt[Int]('n', "numberRuns") required () action { (cNrRuns, c) =>
-      c.copy(nrRuns = cNrRuns)
-    } validate { cNrRuns =>
-      if (cNrRuns > 0) success else failure("numberRuns must be greater zero")
-    } text ("execute the test a specified number of times")
-    arg[String]("<sbt test command>") required () unbounded () action { (cCmd, c) =>
-      c.copy(cmd = c.cmd :+ cCmd)
-    } text ("the sbt command to execute")
-    help("help") text ("prints this usage text")
-    note("""|
-            |Examples:
-            |  sbtflaky -n 10 testOnly MySpec
-            |  sbtflaky -n 3 testOnly *DBSpec
-            | 
-            |The output of all failed command will be piped to stdout.""".stripMargin)
+  import scala.collection.mutable.ArrayBuffer
+
+  def startTestRuns(config: CommandLineConfig): (Log, ExitCode) = {
+    val initialReader = config.fullCommand
+    val initialState = Stats(maxRuns = config.nrRuns)
+    val (log, exitCodes, _) = whileM[List, ExitCode](gets(_.maxRuns > 0), executeTest(config.fullCommand)).run(initialReader, initialState)
+    (log, exitCodes.suml)
   }
 
-  parser.parse(args, CommandLineConfig()) map { config =>
-    val initialReader = ()
-    val initialState = Stats(maxRuns = config.nrRuns)
-    val (log, _, _) =
-      whileM_(gets(_.maxRuns >= 0), executeTest(config.cmd.mkString(" "))).run(initialReader, initialState)
-    log match {
-      case logOut @ _ +: _ =>
-        println(s"${RED}Error Log:$RESET")
-        println(logOut.foldMap(s => s + "\n"))
-      case _ =>
-        println(s"${GREEN}No errors$RESET")
+  def printResult(log: Log, exitCode: ExitCode): Unit = {
+    import sbtflaky.ColorHelper._
+    exitCode match {
+      case FailedTest =>
+        println(colored(RED, "Error Log:"))
+        println(s"Log : $log")
+        println(log.foldMap(s => s + "\n"))
+      case Ok =>
+        println(colored(GREEN, "No errors"))
     }
   }
-}
 
-case class CommandLineConfig(nrRuns: Int = 10, cmd: List[String] = Nil)
 
-object CommandLineConfig {
-  implicit def cmdLineConfigShows: Show[CommandLineConfig] = new Show[CommandLineConfig] {
-    override def show(c: CommandLineConfig): Cord = s"(${c.nrRuns}, ${c.cmd.foldLeft("") { case (r, e) => r + " " + e }}"
-  }
-}
+  private def executeTest(cmd: String): SbtRun[ExitCode] = {
 
-object Runner {
+    def failed(output: ArrayBuffer[String]): SbtRun[Unit] = {
+      for {
+        _ <- _increaseFailedRuns.rwst[Log, String]
+        state <- get
+        header = colored(BLUE, s"""Log for build : $RED${state.maxRuns - state.failedRuns - state.okRuns}\n""")
+        _ <- tell((header +: output).toVector)
+      } yield ()
+    }
 
-  def executeTest(testCmd: String): ReaderWriterState[Unit, Vector[String], Stats, Unit] = ReaderWriterState {
-    case (w, stats) =>
-      import stats._
-      println(stats.show)
-      var output = Vector[String]()
-      val processLogger = ProcessLogger(line => output = output :+ line)
-      val exitCode = Process("sbt", List(testCmd)).run(processLogger).exitValue()
-      if (exitCode == 0) {
-        val (newStats, _) = _maxOk.run(stats)
-        (Vector[String](), (), newStats)
-      } else {
-        val (newStats, _) = _maxFailed.run(stats)
-        val header = s"""|$BLUE
-                         |Log for build : $RED${maxRuns - failedRuns - okRuns}
-                         |$RESET
-                       """.stripMargin
-        (header +: output, (), newStats)
+    val (output, processLogger) = createProcessLogger()
+    val result: SbtRun[ExitCode] = for {
+      _ <- gets(stats => println(stats.show))
+      exitCode <- gets(stats => Process("sbt", List(cmd)).run(processLogger).exitValue().asExitCode)
+      _ <- exitCode match {
+        case Ok =>
+          _increaseSuccessfulRuns.rwst[Log, String]
+        case FailedTest =>
+          failed(output)
       }
+    } yield exitCode
+
+    result
   }
-}
 
-case class Stats(maxRuns: Int, failedRuns: Int = 0, okRuns: Int = 0)
-
-object Stats {
-  val _maxRuns = Lens.lensu[Stats, Int]((stats, mr) => stats.copy(maxRuns = mr), _.maxRuns)
-  val _failedRuns = Lens.lensu[Stats, Int]((stats, fr) => stats.copy(failedRuns = fr), _.failedRuns)
-  val _okRuns = Lens.lensu[Stats, Int]((stats, ok) => stats.copy(okRuns = ok), _.okRuns)
-  val _maxOk = for {
-    _ <- _maxRuns %= { _ - 1 }
-    _ <- _okRuns %= { _ + 1 }
-  } yield ()
-  val _maxFailed = for {
-    _ <- _maxRuns %= { _ - 1 }
-    _ <- _failedRuns %= { _ + 1 }
-  } yield ()
-
-  implicit val statsShow: Show[Stats] = Show.shows { stats =>
-    f"Remaining runs: ${BLACK}${stats.maxRuns}${RESET} " +
-      f"failedRuns: ${RED}${stats.failedRuns}${RESET} " +
-      f"okRuns: ${GREEN}${stats.okRuns}${RESET}"
+  private def createProcessLogger(): (ArrayBuffer[String], ProcessLogger) = {
+    val output = collection.mutable.ArrayBuffer[String]()
+    val processLogger = ProcessLogger(line => output += line)
+    (output, processLogger)
   }
 }
