@@ -34,7 +34,7 @@ object CommandLineParser {
             |  sbtflaky -n 10 testOnly MySpec
             |  sbtflaky -n 3 testOnly *DBSpec
             |
-            |The output of all failed command will be piped to stdout.""".stripMargin)
+            |The output of all failed tests will be piped to stdout.""".stripMargin)
   }
 
 }
