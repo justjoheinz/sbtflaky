@@ -9,7 +9,6 @@ case class CommandLineConfig(nrRuns: Int = 10, cmd: List[String] = Nil) {
   def fullCommand : String = s"${cmd.mkString(" ")}"
 }
 
-
 object CommandLineConfig {
   // Show typeclass
   implicit def cmdLineConfigShows: Show[CommandLineConfig] = new Show[CommandLineConfig] {
@@ -17,7 +16,7 @@ object CommandLineConfig {
   }
 }
 
-object CommandLineParser {
+trait CommandLineParser {
   val parser = new scopt.OptionParser[CommandLineConfig]("sbtflaky") {
     head("sbtflaky", BuildInfo.version)
     opt[Int]("num") required() action { (cNrRuns, c) =>

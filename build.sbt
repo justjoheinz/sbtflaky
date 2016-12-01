@@ -3,18 +3,15 @@ import com.typesafe.sbt.packager.Keys._
 import ReleaseTransformations._
 
 
-packageArchetype.java_application
-
 name := "sbtflaky"
 
-
-scalaVersion := "2.11.7"
+scalaVersion := "2.12.0"
 
 libraryDependencies ++= Seq(
-	"org.scalaz" %% "scalaz-core" % "7.2.0",
-	"org.scalaz" %% "scalaz-effect" % "7.2.0",
-	"com.github.scopt" %% "scopt" % "3.2.0",
-	"org.specs2" %% "specs2-core" % "3.7" % "test"
+	"org.scalaz" %% "scalaz-core" % "7.2.7",
+	"org.scalaz" %% "scalaz-effect" % "7.2.7",
+	"com.github.scopt" %% "scopt" % "3.5.0",
+	"org.specs2" %% "specs2-core" % "3.8.6" % "test"
 	)
 
 scalacOptions in Test ++= Seq("-Yrangepos")
@@ -32,9 +29,8 @@ releaseProcess := Seq[ReleaseStep](
   pushChanges                             // : ReleaseStep, also checks that an upstream branch is properly configured
 )
 
-
 lazy val root = (project in file(".")).
-	enablePlugins(BuildInfoPlugin).
+	enablePlugins(BuildInfoPlugin, JavaAppPackaging).
 	settings(
 		buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
 		buildInfoPackage := "sbtflaky"
