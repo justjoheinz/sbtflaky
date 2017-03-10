@@ -46,5 +46,9 @@ Installation
 
 Just clone the repository, run sbt package and move the bin and 
 
+Similar projects
+================
+https://github.com/otrebski/sbt-flaky is a sbt-plugin to run test multiple times and prepare flaky tests report.
+
 
 
